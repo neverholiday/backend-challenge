@@ -10,7 +10,7 @@ Work in progress. This README is updated as parts land.
 | Layer | Status |
 | --- | --- |
 | Domain (`internal/domain`) | Done — `User` entity, `UserRepository` port, sentinel errors |
-| Application (use cases) | Pending |
+| Application (use cases) | Done — `RegisterUser`, `AuthenticateUser`, `GetUser`, `ListUsers`, `UpdateUser`, `DeleteUser` |
 | Adapters (HTTP, MongoDB, JWT, bcrypt) | Pending |
 | gRPC | Pending |
 | Docker / docker-compose | Pending |

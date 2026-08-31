@@ -1,0 +1,133 @@
+package mongodb
+
+import (
+	"context"
+	"errors"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
+	"github.com/neverholiday/backend-challenge/solutions/user-management-api/internal/domain"
+)
+
+// UserRepository is a MongoDB-backed implementation of domain.UserRepository.
+type UserRepository struct {
+	collection *mongo.Collection
+}
+
+var _ domain.UserRepository = (*UserRepository)(nil)
+
+// NewUserRepository builds a UserRepository against the "users" collection of db.
+func NewUserRepository(db *mongo.Database) *UserRepository {
+	return &UserRepository{collection: db.Collection("users")}
+}
+
+// EnsureIndexes creates the indexes UserRepository depends on. Call it once at
+// startup — it is not invoked from NewUserRepository so construction stays
+// non-blocking and testable without a live round-trip.
+func (r *UserRepository) EnsureIndexes(ctx context.Context) error {
+	_, err := r.collection.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "email", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	})
+	return err
+}
+
+func (r *UserRepository) CreateUser(ctx context.Context, user domain.User) error {
+	_, err := r.collection.InsertOne(ctx, fromDomain(user))
+	if mongo.IsDuplicateKeyError(err) {
+		return domain.ErrEmailAlreadyExists
+	}
+	return err
+}
+
+func (r *UserRepository) CountUsers(ctx context.Context) (uint, error) {
+	count, err := r.collection.CountDocuments(ctx, bson.D{})
+	if err != nil {
+		return 0, err
+	}
+	if count < 0 {
+		return 0, nil
+	}
+	return uint(count), nil
+}
+
+func (r *UserRepository) GetUserByID(ctx context.Context, id string) (*domain.User, error) {
+	return r.findOne(ctx, bson.D{{Key: "_id", Value: id}})
+}
+
+func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
+	return r.findOne(ctx, bson.D{{Key: "email", Value: email}})
+}
+
+func (r *UserRepository) findOne(ctx context.Context, filter bson.D) (*domain.User, error) {
+	var doc userDocument
+	err := r.collection.FindOne(ctx, filter).Decode(&doc)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, domain.ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	user := doc.toDomain()
+	return &user, nil
+}
+
+func (r *UserRepository) ListUsers(ctx context.Context) ([]domain.User, error) {
+	cursor, err := r.collection.Find(ctx, bson.D{})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var docs []userDocument
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, err
+	}
+
+	users := make([]domain.User, len(docs))
+	for i, doc := range docs {
+		users[i] = doc.toDomain()
+	}
+	return users, nil
+}
+
+func (r *UserRepository) UpdateUser(ctx context.Context, id string, param domain.UserUpdateParam) error {
+	set := bson.D{}
+	if param.Name != nil {
+		set = append(set, bson.E{Key: "name", Value: *param.Name})
+	}
+	if param.Email != nil {
+		set = append(set, bson.E{Key: "email", Value: *param.Email})
+	}
+	if len(set) == 0 {
+		return nil
+	}
+
+	result, err := r.collection.UpdateOne(ctx,
+		bson.D{{Key: "_id", Value: id}},
+		bson.D{{Key: "$set", Value: set}},
+	)
+	if mongo.IsDuplicateKeyError(err) {
+		return domain.ErrEmailAlreadyExists
+	}
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *UserRepository) DeleteUser(ctx context.Context, id string) error {
+	result, err := r.collection.DeleteOne(ctx, bson.D{{Key: "_id", Value: id}})
+	if err != nil {
+		return err
+	}
+	if result.DeletedCount == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}

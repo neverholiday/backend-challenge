@@ -11,7 +11,7 @@ Work in progress. This README is updated as parts land.
 | --- | --- |
 | Domain (`internal/domain`) | Done — `User` entity, `UserRepository` port, sentinel errors |
 | Application (use cases) | Done — `RegisterUser`, `AuthenticateUser`, `GetUser`, `ListUsers`, `UpdateUser`, `DeleteUser` |
-| Adapters (HTTP, MongoDB, JWT, bcrypt) | Pending |
+| Adapters (HTTP, MongoDB, JWT, bcrypt) | In progress — MongoDB `UserRepository` done; HTTP, JWT, bcrypt pending |
 | gRPC | Pending |
 | Docker / docker-compose | Pending |
 
@@ -40,7 +40,7 @@ Adapters depend inward on `domain`/`application`, never the reverse.
 ## Prerequisites
 
 - Go 1.25+
-- Docker + Docker Compose (for running MongoDB / full stack, once added)
+- Docker (required for `-tags=integration` tests) + Docker Compose (for running the full stack, once added)
 - [golangci-lint](https://golangci-lint.run/) v2
 
 Install golangci-lint:
@@ -60,6 +60,19 @@ go build ./...
 ```bash
 go test ./... -race -cover
 ```
+
+Adapter packages that need a live dependency (e.g. MongoDB) are covered by a separate
+integration suite, build-tagged `integration` so it's excluded from the default run above
+and doesn't require Docker just to `go build`/unit-test:
+
+```bash
+go test -tags=integration ./... -v
+```
+
+Requires a running Docker daemon — these tests spin up real containers via
+[testcontainers-go](https://golang.testcontainers.org/) (e.g. `mongo:7` for the MongoDB
+adapter) rather than mocking the driver, so they exercise real behavior like unique-index
+enforcement.
 
 ## Lint
 

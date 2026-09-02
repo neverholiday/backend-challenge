@@ -34,6 +34,8 @@ func (r *UserRepository) EnsureIndexes(ctx context.Context) error {
 	return err
 }
 
+// CreateUser inserts user, returning domain.ErrEmailAlreadyExists if its
+// email violates the unique index.
 func (r *UserRepository) CreateUser(ctx context.Context, user domain.User) error {
 	_, err := r.collection.InsertOne(ctx, fromDomain(user))
 	if mongo.IsDuplicateKeyError(err) {
@@ -42,6 +44,7 @@ func (r *UserRepository) CreateUser(ctx context.Context, user domain.User) error
 	return err
 }
 
+// CountUsers returns the total number of users in the collection.
 func (r *UserRepository) CountUsers(ctx context.Context) (uint, error) {
 	count, err := r.collection.CountDocuments(ctx, bson.D{})
 	if err != nil {
@@ -53,10 +56,12 @@ func (r *UserRepository) CountUsers(ctx context.Context) (uint, error) {
 	return uint(count), nil
 }
 
+// GetUserByID returns the user with the given id, or domain.ErrUserNotFound.
 func (r *UserRepository) GetUserByID(ctx context.Context, id string) (*domain.User, error) {
 	return r.findOne(ctx, bson.D{{Key: "_id", Value: id}})
 }
 
+// GetUserByEmail returns the user with the given email, or domain.ErrUserNotFound.
 func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*domain.User, error) {
 	return r.findOne(ctx, bson.D{{Key: "email", Value: email}})
 }
@@ -74,12 +79,13 @@ func (r *UserRepository) findOne(ctx context.Context, filter bson.D) (*domain.Us
 	return &user, nil
 }
 
+// ListUsers returns every user in the collection.
 func (r *UserRepository) ListUsers(ctx context.Context) ([]domain.User, error) {
 	cursor, err := r.collection.Find(ctx, bson.D{})
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	var docs []userDocument
 	if err := cursor.All(ctx, &docs); err != nil {
@@ -93,6 +99,9 @@ func (r *UserRepository) ListUsers(ctx context.Context) ([]domain.User, error) {
 	return users, nil
 }
 
+// UpdateUser applies the non-nil fields of param to the user with the given
+// id, returning domain.ErrUserNotFound if no such user exists or
+// domain.ErrEmailAlreadyExists if the new email violates the unique index.
 func (r *UserRepository) UpdateUser(ctx context.Context, id string, param domain.UserUpdateParam) error {
 	set := bson.D{}
 	if param.Name != nil {
@@ -121,6 +130,7 @@ func (r *UserRepository) UpdateUser(ctx context.Context, id string, param domain
 	return nil
 }
 
+// DeleteUser removes the user with the given id, or returns domain.ErrUserNotFound.
 func (r *UserRepository) DeleteUser(ctx context.Context, id string) error {
 	result, err := r.collection.DeleteOne(ctx, bson.D{{Key: "_id", Value: id}})
 	if err != nil {

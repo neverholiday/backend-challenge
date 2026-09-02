@@ -290,12 +290,20 @@ protoc -I . -I "$(brew --prefix protobuf)/include" \
   of the same enumeration. It is kept because the alternative - accepting the registration
   and reporting success either way - needs an email-confirmation flow that is out of scope
   here. Noted rather than hidden.
+- **Authentication, but no per-user authorization.** Any valid token may read, update, or
+  delete any user - the challenge defines no roles, ownership, or admin concept, and adding
+  one would be inventing requirements. The token's subject is available to handlers
+  (`authMiddleware` puts it on the context), so an ownership check is a single comparison
+  away when the product defines who may act on whom. Stated explicitly because a reviewer
+  should see it as a decision rather than an oversight.
 - **JWT claims**: only the standard registered claims (`sub`, `iat`, `exp`) are used. `sub`
   is the user's ID; no roles/scopes exist in the domain model, so there was nothing else to
   put in the token.
-- **PATCH semantics**: `UpdateUser` returns the full updated user (re-fetched after the
-  write) rather than a bare 200/204, so a client doesn't need a follow-up `GET` to see the
-  result.
+- **PATCH semantics**: `UpdateUser` returns the full updated user rather than a bare
+  200/204, so a client doesn't need a follow-up `GET`. The repository port returns the
+  updated user from the write itself (`FindOneAndUpdate` with `ReturnDocument(After)`)
+  instead of the handler reading the row back: one round trip, and a concurrent update
+  cannot land in between and make the response show state this request never wrote.
 - **Validation lives in `domain`, applied by the use cases** (`domain.ValidateName`,
   `ValidateEmail`, `ValidatePassword`, `UserUpdateParam.Validate`), not in each adapter.
   What counts as a valid user is a business rule, and duplicating it per adapter lets them

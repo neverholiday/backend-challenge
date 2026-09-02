@@ -80,7 +80,7 @@ func (s *Server) handleUpdateUser(c echo.Context) error {
 		return writeError(c, s.logger, newValidationError("invalid request body"))
 	}
 
-	err := s.updateUser.Execute(c.Request().Context(), application.UpdateUserInput{
+	user, err := s.updateUser.Execute(c.Request().Context(), application.UpdateUserInput{
 		ID: id,
 		Param: domain.UserUpdateParam{
 			Name:  req.Name,
@@ -91,10 +91,6 @@ func (s *Server) handleUpdateUser(c echo.Context) error {
 		return writeError(c, s.logger, err)
 	}
 
-	user, err := s.getUser.Execute(c.Request().Context(), application.GetUserInput{ID: id})
-	if err != nil {
-		return writeError(c, s.logger, err)
-	}
 	return c.JSON(http.StatusOK, toUserResponse(*user))
 }
 

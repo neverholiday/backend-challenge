@@ -71,13 +71,17 @@ func (f *fakeUserRepository) ListUsers(_ context.Context) ([]domain.User, error)
 	return users, nil
 }
 
-func (f *fakeUserRepository) UpdateUser(_ context.Context, id string, param domain.UserUpdateParam) error {
+func (f *fakeUserRepository) UpdateUser(
+	_ context.Context,
+	id string,
+	param domain.UserUpdateParam,
+) (*domain.User, error) {
 	if f.UpdateUserErr != nil {
-		return f.UpdateUserErr
+		return nil, f.UpdateUserErr
 	}
 	user, ok := f.users[id]
 	if !ok {
-		return domain.ErrUserNotFound
+		return nil, domain.ErrUserNotFound
 	}
 	if param.Name != nil {
 		user.Name = *param.Name
@@ -86,7 +90,7 @@ func (f *fakeUserRepository) UpdateUser(_ context.Context, id string, param doma
 		user.Email = *param.Email
 	}
 	f.users[id] = user
-	return nil
+	return &user, nil
 }
 
 func (f *fakeUserRepository) DeleteUser(_ context.Context, id string) error {

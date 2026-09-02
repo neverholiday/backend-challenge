@@ -99,10 +99,19 @@ func (r *UserRepository) ListUsers(ctx context.Context) ([]domain.User, error) {
 	return users, nil
 }
 
-// UpdateUser applies the non-nil fields of param to the user with the given
-// id, returning domain.ErrUserNotFound if no such user exists or
-// domain.ErrEmailAlreadyExists if the new email violates the unique index.
-func (r *UserRepository) UpdateUser(ctx context.Context, id string, param domain.UserUpdateParam) error {
+// UpdateUser applies the non-nil fields of param to the user with the given id
+// and returns the resulting document, or domain.ErrUserNotFound if no such
+// user exists, or domain.ErrEmailAlreadyExists if the new email violates the
+// unique index.
+//
+// FindOneAndUpdate rather than an update followed by a read: the write and the
+// read of its result are one operation, so a concurrent update cannot land in
+// between and make this return state the caller never wrote.
+func (r *UserRepository) UpdateUser(
+	ctx context.Context,
+	id string,
+	param domain.UserUpdateParam,
+) (*domain.User, error) {
 	set := bson.D{}
 	if param.Name != nil {
 		set = append(set, bson.E{Key: "name", Value: *param.Name})
@@ -111,23 +120,28 @@ func (r *UserRepository) UpdateUser(ctx context.Context, id string, param domain
 		set = append(set, bson.E{Key: "email", Value: *param.Email})
 	}
 	if len(set) == 0 {
-		return nil
+		return r.GetUserByID(ctx, id)
 	}
 
-	result, err := r.collection.UpdateOne(ctx,
+	var doc userDocument
+	err := r.collection.FindOneAndUpdate(ctx,
 		bson.D{{Key: "_id", Value: id}},
 		bson.D{{Key: "$set", Value: set}},
-	)
+		options.FindOneAndUpdate().SetReturnDocument(options.After),
+	).Decode(&doc)
+
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, domain.ErrUserNotFound
+	}
 	if mongo.IsDuplicateKeyError(err) {
-		return domain.ErrEmailAlreadyExists
+		return nil, domain.ErrEmailAlreadyExists
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if result.MatchedCount == 0 {
-		return domain.ErrUserNotFound
-	}
-	return nil
+
+	user := doc.toDomain()
+	return &user, nil
 }
 
 // DeleteUser removes the user with the given id, or returns domain.ErrUserNotFound.

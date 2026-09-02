@@ -63,7 +63,7 @@ func (f *fakeUserRepository) ListUsers(_ context.Context) ([]domain.User, error)
 	return users, nil
 }
 
-func (f *fakeUserRepository) UpdateUser(context.Context, string, domain.UserUpdateParam) error {
+func (f *fakeUserRepository) UpdateUser(context.Context, string, domain.UserUpdateParam) (*domain.User, error) {
 	panic("not used")
 }
 

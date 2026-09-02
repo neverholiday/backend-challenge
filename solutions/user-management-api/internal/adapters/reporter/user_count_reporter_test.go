@@ -34,7 +34,7 @@ func (r *countingRepo) GetUserByEmail(context.Context, string) (*domain.User, er
 	panic("not used")
 }
 func (r *countingRepo) ListUsers(context.Context) ([]domain.User, error) { panic("not used") }
-func (r *countingRepo) UpdateUser(context.Context, string, domain.UserUpdateParam) error {
+func (r *countingRepo) UpdateUser(context.Context, string, domain.UserUpdateParam) (*domain.User, error) {
 	panic("not used")
 }
 func (r *countingRepo) DeleteUser(context.Context, string) error { panic("not used") }

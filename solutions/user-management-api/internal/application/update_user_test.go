@@ -17,7 +17,7 @@ func TestUpdateUser_Execute(t *testing.T) {
 
 		newName := "Jane Smith"
 		newEmail := "jane.smith@example.com"
-		err := uc.Execute(context.Background(), application.UpdateUserInput{
+		got, err := uc.Execute(context.Background(), application.UpdateUserInput{
 			ID: "user-1",
 			Param: domain.UserUpdateParam{
 				Name:  &newName,
@@ -27,10 +27,16 @@ func TestUpdateUser_Execute(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Execute() error = %v, want nil", err)
 		}
-
-		got := repo.users["user-1"]
+		if got == nil {
+			t.Fatal("Execute() got nil user, want the updated user")
+		}
 		if got.Name != newName || got.Email != newEmail {
-			t.Errorf("Execute() got Name/Email = %q/%q, want %q/%q", got.Name, got.Email, newName, newEmail)
+			t.Errorf("Execute() returned Name/Email = %q/%q, want %q/%q", got.Name, got.Email, newName, newEmail)
+		}
+
+		stored := repo.users["user-1"]
+		if stored.Name != newName || stored.Email != newEmail {
+			t.Errorf("stored Name/Email = %q/%q, want %q/%q", stored.Name, stored.Email, newName, newEmail)
 		}
 	})
 
@@ -39,7 +45,7 @@ func TestUpdateUser_Execute(t *testing.T) {
 		uc := application.NewUpdateUser(repo)
 
 		newName := "Jane Smith"
-		err := uc.Execute(context.Background(), application.UpdateUserInput{
+		_, err := uc.Execute(context.Background(), application.UpdateUserInput{
 			ID:    "missing",
 			Param: domain.UserUpdateParam{Name: &newName},
 		})
@@ -55,7 +61,7 @@ func TestUpdateUser_Execute(t *testing.T) {
 		uc := application.NewUpdateUser(repo)
 
 		newEmail := "taken@example.com"
-		err := uc.Execute(context.Background(), application.UpdateUserInput{
+		_, err := uc.Execute(context.Background(), application.UpdateUserInput{
 			ID:    "user-1",
 			Param: domain.UserUpdateParam{Email: &newEmail},
 		})
@@ -84,7 +90,7 @@ func TestUpdateUser_Execute_Validation(t *testing.T) {
 			repo.users["user-1"] = domain.User{ID: "user-1", Name: "Jane Doe", Email: "jane@example.com"}
 			uc := application.NewUpdateUser(repo)
 
-			err := uc.Execute(context.Background(), application.UpdateUserInput{ID: "user-1", Param: tt.param})
+			_, err := uc.Execute(context.Background(), application.UpdateUserInput{ID: "user-1", Param: tt.param})
 
 			var verr *domain.ValidationError
 			if !errors.As(err, &verr) {

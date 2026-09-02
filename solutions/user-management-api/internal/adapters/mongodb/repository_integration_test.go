@@ -188,23 +188,29 @@ func TestUserRepository_UpdateUser(t *testing.T) {
 	t.Run("updates name and email", func(t *testing.T) {
 		newName := "Jane Smith"
 		newEmail := "jane.smith@example.com"
-		err := repo.UpdateUser(ctx, "user-1", domain.UserUpdateParam{Name: &newName, Email: &newEmail})
+		got, err := repo.UpdateUser(ctx, "user-1", domain.UserUpdateParam{Name: &newName, Email: &newEmail})
 		if err != nil {
 			t.Fatalf("UpdateUser() error = %v, want nil", err)
 		}
+		if got == nil {
+			t.Fatal("UpdateUser() got nil user, want the updated document")
+		}
+		if got.Name != newName || got.Email != newEmail {
+			t.Errorf("UpdateUser() returned Name/Email = %q/%q, want %q/%q", got.Name, got.Email, newName, newEmail)
+		}
 
-		got, err := repo.GetUserByID(ctx, "user-1")
+		stored, err := repo.GetUserByID(ctx, "user-1")
 		if err != nil {
 			t.Fatalf("GetUserByID() error = %v, want nil", err)
 		}
-		if got.Name != newName || got.Email != newEmail {
-			t.Errorf("got Name/Email = %q/%q, want %q/%q", got.Name, got.Email, newName, newEmail)
+		if stored.Name != newName || stored.Email != newEmail {
+			t.Errorf("stored Name/Email = %q/%q, want %q/%q", stored.Name, stored.Email, newName, newEmail)
 		}
 	})
 
 	t.Run("not found", func(t *testing.T) {
 		newName := "Nobody"
-		err := repo.UpdateUser(ctx, "missing", domain.UserUpdateParam{Name: &newName})
+		_, err := repo.UpdateUser(ctx, "missing", domain.UserUpdateParam{Name: &newName})
 		if !errors.Is(err, domain.ErrUserNotFound) {
 			t.Fatalf("UpdateUser() error = %v, want %v", err, domain.ErrUserNotFound)
 		}
@@ -212,7 +218,7 @@ func TestUserRepository_UpdateUser(t *testing.T) {
 
 	t.Run("duplicate email is rejected by the unique index", func(t *testing.T) {
 		taken := "john@example.com"
-		err := repo.UpdateUser(ctx, "user-1", domain.UserUpdateParam{Email: &taken})
+		_, err := repo.UpdateUser(ctx, "user-1", domain.UserUpdateParam{Email: &taken})
 		if !errors.Is(err, domain.ErrEmailAlreadyExists) {
 			t.Fatalf("UpdateUser() error = %v, want %v", err, domain.ErrEmailAlreadyExists)
 		}

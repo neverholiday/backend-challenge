@@ -49,6 +49,9 @@ func TestAuthenticateUser_Execute(t *testing.T) {
 		if !errors.Is(err, domain.ErrInvalidCredentials) {
 			t.Fatalf("Execute() error = %v, want %v", err, domain.ErrInvalidCredentials)
 		}
+		if hasher.DummyCompares != 1 {
+			t.Errorf("Execute() made %d dummy comparisons, want 1 - an unknown email must cost the same as a known one", hasher.DummyCompares)
+		}
 	})
 
 	t.Run("masks wrong password as invalid credentials", func(t *testing.T) {

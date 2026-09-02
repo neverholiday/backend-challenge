@@ -64,3 +64,35 @@ func TestUpdateUser_Execute(t *testing.T) {
 		}
 	})
 }
+
+func TestUpdateUser_Execute_Validation(t *testing.T) {
+	empty := ""
+	badEmail := "not-an-email"
+
+	tests := []struct {
+		name  string
+		param domain.UserUpdateParam
+	}{
+		{"no fields", domain.UserUpdateParam{}},
+		{"empty name", domain.UserUpdateParam{Name: &empty}},
+		{"malformed email", domain.UserUpdateParam{Email: &badEmail}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := newFakeUserRepository()
+			repo.users["user-1"] = domain.User{ID: "user-1", Name: "Jane Doe", Email: "jane@example.com"}
+			uc := application.NewUpdateUser(repo)
+
+			err := uc.Execute(context.Background(), application.UpdateUserInput{ID: "user-1", Param: tt.param})
+
+			var verr *domain.ValidationError
+			if !errors.As(err, &verr) {
+				t.Fatalf("Execute() error = %v, want *domain.ValidationError", err)
+			}
+			if got := repo.users["user-1"]; got.Name != "Jane Doe" || got.Email != "jane@example.com" {
+				t.Errorf("Execute() modified the user to %q/%q, want it untouched", got.Name, got.Email)
+			}
+		})
+	}
+}

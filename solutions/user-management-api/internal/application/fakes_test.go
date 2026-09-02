@@ -101,10 +101,17 @@ func (f *fakeUserRepository) DeleteUser(_ context.Context, id string) error {
 // CompareErr lets a test force Compare to fail (wrong password path).
 type fakePasswordHasher struct {
 	CompareErr error
+	// DummyCompares counts CompareDummy calls, so tests can assert the
+	// unknown-email path still pays for a comparison.
+	DummyCompares int
 }
 
 func (f *fakePasswordHasher) Hash(password string) (string, error) {
 	return "hashed:" + password, nil
+}
+
+func (f *fakePasswordHasher) CompareDummy(string) {
+	f.DummyCompares++
 }
 
 func (f *fakePasswordHasher) Compare(hash string, password string) error {

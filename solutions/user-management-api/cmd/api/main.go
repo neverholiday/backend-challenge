@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -84,7 +85,24 @@ func run(logger *slog.Logger) error {
 	defer grpcServer.GracefulStop()
 
 	userCountReporter := reporter.NewUserCountReporter(repo, cfg.UserCountLogInterval, logger)
-	go userCountReporter.Start(ctx)
+	reporterCtx, stopReporter := context.WithCancel(ctx)
+
+	var reporterDone sync.WaitGroup
+	reporterDone.Add(1)
+	go func() {
+		defer reporterDone.Done()
+		userCountReporter.Start(reporterCtx)
+	}()
+
+	// Stop the reporter and let any in-flight count finish before the deferred
+	// Mongo disconnect closes the client underneath it. Registered after that
+	// defer so it runs first, and it cancels its own context rather than
+	// relying on the signal context, which is still live when a server exits
+	// on its own.
+	defer func() {
+		stopReporter()
+		reporterDone.Wait()
+	}()
 
 	serverErrs := make(chan error, 1)
 	go func() {

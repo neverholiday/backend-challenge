@@ -46,13 +46,22 @@ jobs:
       - name: unit tests
         run: go test -race -coverprofile=coverage.out ./...
 
-      # No single coverage number is printed on purpose: this profile spans the
-      # generated userv1 package and the mongodb adapter, which is exercised by
-      # the integration job instead, so one aggregate figure would mislead.
       - uses: actions/upload-artifact@v7
         with:
-          name: coverage
+          name: coverage-unit
           path: solutions/user-management-api/coverage.out
+
+      # Uploaded under a flag so the unit and integration profiles stay
+      # distinguishable on Codecov. Generated and wiring-only packages are
+      # excluded in codecov.yml, otherwise the total would understate the code
+      # that is actually tested.
+      - name: upload coverage to codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: solutions/user-management-api/coverage.out
+          flags: unit
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   lint:
     name: golangci-lint
@@ -84,9 +93,25 @@ jobs:
           cache-dependency-path: solutions/user-management-api/go.sum
 
       # ubuntu-latest ships a running Docker daemon, which testcontainers needs
-      # to start the mongo:7 container these tests talk to.
+      # to start the mongo:7 container these tests talk to. The mongodb adapter
+      # has no unit tests by design, so its coverage only exists here: without
+      # this profile the reported total would penalise a package that is in
+      # fact exercised, against a real database.
       - name: integration tests
-        run: go test -tags=integration -race -timeout=10m ./...
+        run: go test -tags=integration -race -timeout=10m -coverprofile=coverage-integration.out ./...
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-integration
+          path: solutions/user-management-api/coverage-integration.out
+
+      - name: upload coverage to codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: solutions/user-management-api/coverage-integration.out
+          flags: integration
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   docker:
     name: docker image builds

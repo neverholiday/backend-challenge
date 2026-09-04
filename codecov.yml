@@ -1,0 +1,34 @@
+# Codecov configuration for the user-management-api module.
+#
+# Coverage arrives from two jobs: the unit run and the integration run, which is
+# the only one that exercises the MongoDB adapter. Codecov merges both uploads,
+# so the total reflects every package that is actually tested.
+
+coverage:
+  status:
+    # Informational: a coverage move annotates the commit but never fails the
+    # build. The build gate is the test suite and the linter, not a percentage.
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+comment:
+  layout: "reach, diff, flags, files"
+  require_changes: true
+
+flags:
+  unit:
+    paths:
+      - solutions/user-management-api/
+  integration:
+    paths:
+      - solutions/user-management-api/
+
+ignore:
+  # Generated from api/proto/user/v1/user.proto. Not hand-written, not tested.
+  - "solutions/user-management-api/internal/adapters/grpc/userv1/**"
+  # Dependency wiring and process startup, covered by running the binary.
+  - "solutions/user-management-api/cmd/**"

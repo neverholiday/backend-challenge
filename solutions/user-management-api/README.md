@@ -1,10 +1,11 @@
 # User Management API
 
 [![CI](https://github.com/neverholiday/backend-challenge/actions/workflows/ci.yml/badge.svg)](https://github.com/neverholiday/backend-challenge/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/neverholiday/backend-challenge/graph/badge.svg)](https://codecov.io/gh/neverholiday/backend-challenge)
 
-RESTful user management API in Go, backed by MongoDB, with JWT (HS256) authentication.
-Built with hexagonal architecture (ports & adapters). Also exposes a gRPC service for
-`CreateUser`/`GetUser`.
+RESTful user management API in Go. MongoDB for storage, JWT (HS256) for auth. Built with
+hexagonal architecture (ports and adapters). It also serves a gRPC service for `CreateUser`
+and `GetUser`.
 
 ## Status
 
@@ -23,7 +24,7 @@ Built with hexagonal architecture (ports & adapters). Also exposes a gRPC servic
 
 ## Architecture
 
-Hexagonal (ports & adapters):
+Hexagonal (ports and adapters):
 
 ```
 api/proto/user/v1/  UserService proto definition
@@ -42,15 +43,15 @@ internal/
     reporter/       Periodic user-count logger (the concurrency task)
 ```
 
-Rule: `domain` and `application` never import adapter packages (echo, mongo-driver, jwt lib,
-grpc). Adapters depend inward on `domain`/`application`, never the reverse.
+The rule: `domain` and `application` never import adapter packages (echo, mongo-driver, jwt
+lib, grpc). Adapters point inward to `domain` and `application`, never the other way.
 
 ## Prerequisites
 
 - Go 1.25+
-- Docker (required for `-tags=integration` tests, and to run the full stack via compose)
+- Docker (needed for `-tags=integration` tests, and to run the full stack via compose)
 - [golangci-lint](https://golangci-lint.run/) v2
-- `protoc` + `protoc-gen-go` + `protoc-gen-go-grpc` (only needed if you change `api/proto/user/v1/user.proto` and want to regenerate `internal/adapters/grpc/userv1`)
+- `protoc` + `protoc-gen-go` + `protoc-gen-go-grpc` (only if you change `api/proto/user/v1/user.proto` and want to regenerate `internal/adapters/grpc/userv1`)
 
 Install golangci-lint:
 
@@ -70,18 +71,35 @@ go build ./...
 go test ./... -race -cover
 ```
 
-Adapter packages that need a live dependency (MongoDB) are covered by a separate
-integration suite, build-tagged `integration` so it's excluded from the default run above
-and doesn't require Docker just to `go build`/unit-test:
+The number in the badge comes from CI, not from me typing it here. Both test jobs upload a
+profile to [Codecov](https://codecov.io/gh/neverholiday/backend-challenge): the unit run
+under the `unit` flag, the integration run under `integration`. Counting both is the only
+honest total, because the MongoDB adapter is covered by the integration job alone.
+`codecov.yml` leaves out the generated `userv1` package and `cmd/api`, which is wiring.
+
+Adapters that need a live dependency (MongoDB) sit in a separate suite. I build-tag it
+`integration` so the default run above stays fast and you don't need Docker just to build
+or unit test:
 
 ```bash
 go test -tags=integration ./... -v
 ```
 
-Requires a running Docker daemon - these tests spin up real containers via
-[testcontainers-go](https://golang.testcontainers.org/) (e.g. `mongo:7` for the MongoDB
-adapter) rather than mocking the driver, so they exercise real behavior like unique-index
-enforcement.
+You need a running Docker daemon for this one. The tests start real containers with
+[testcontainers-go](https://golang.testcontainers.org/), for example `mongo:7` for the
+MongoDB adapter, so they hit real behavior like unique index enforcement.
+
+I mock at the ports, not at the driver.
+
+Use cases, HTTP handlers, gRPC handlers and the reporter run against in-memory fakes of
+`UserRepository`, `TokenService` and `PasswordHasher`. That is what the ports are for. No
+Docker needed, and I can make a fake fail on demand to reach error paths a real dependency
+won't give me when I ask.
+
+The MongoDB adapter I test for real with `mongo:7`. All it does is translate to and from
+the driver. A mocked driver would only prove the call happened, not that it was right: it
+would still pass with an unmapped duplicate key error, a missing `FindOneAndUpdate` option,
+or a misspelled BSON tag.
 
 ## Lint
 
@@ -89,8 +107,9 @@ enforcement.
 golangci-lint run ./...
 ```
 
-Config: `.golangci.yml`. Enforces `gofmt`/`goimports`, `errcheck`, `govet`, `staticcheck`,
-`revive` (exported-symbol doc comments, ctx-first argument order), `gosec`, and more.
+Config: `.golangci.yml`. It enforces `gofmt`/`goimports`, `errcheck`, `govet`,
+`staticcheck`, `revive` (doc comments on exported symbols, ctx-first argument order),
+`gosec`, and more.
 
 ## Run
 
@@ -100,9 +119,10 @@ Config: `.golangci.yml`. Enforces `gofmt`/`goimports`, `errcheck`, `govet`, `sta
 docker compose up --build
 ```
 
-Starts MongoDB and the API together. The API listens on `:8080` (HTTP) and `:9090` (gRPC).
-Mongo publishes no host port - it is reachable only from the API over the compose network,
-since `mongo:7` runs without authentication. Override the JWT secret with an env var if you want something other than the dev default:
+This starts MongoDB and the API together. The API listens on `:8080` for HTTP and `:9090`
+for gRPC. Mongo publishes no host port, so only the API reaches it over the compose
+network. That is on purpose, because `mongo:7` here runs without authentication. Set your
+own JWT secret if you don't want the dev default:
 
 ```bash
 JWT_SECRET=some-real-secret docker compose up --build
@@ -110,7 +130,8 @@ JWT_SECRET=some-real-secret docker compose up --build
 
 ### Locally
 
-Requires a MongoDB instance reachable at `MONGO_URI` (e.g. `docker run -p 27017:27017 mongo:7`):
+You need MongoDB reachable at `MONGO_URI`, for example
+`docker run -p 27017:27017 mongo:7`:
 
 ```bash
 export MONGO_URI="mongodb://localhost:27017"
@@ -132,7 +153,17 @@ go run ./cmd/api
 
 ## API Reference
 
-Base URL: `http://localhost:8080`. All request/response bodies are JSON.
+Base URL: `http://localhost:8080`. All request and response bodies are JSON.
+
+Every error looks the same, at every status, so a client needs one branch to read a
+failure:
+
+```json
+{ "error": "user not found" }
+```
+
+`GET /healthz` returns `{"status":"ok"}` and needs no auth. The compose healthcheck polls
+it.
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
@@ -161,8 +192,8 @@ curl -X POST http://localhost:8080/api/v1/auth/register \
 }
 ```
 
-`400` on invalid input (missing name, malformed email, password under 8 characters or
-over 72 bytes), `409` if the email is already registered.
+`400` on bad input: missing name, malformed email, password under 8 characters or over 72
+bytes. `409` if the email is already registered.
 
 ### Login
 
@@ -176,7 +207,7 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
 { "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...." }
 ```
 
-`401` on wrong email or password.
+`401` on a wrong email or a wrong password.
 
 ### List users
 
@@ -187,9 +218,16 @@ curl http://localhost:8080/api/v1/users \
 
 ```json
 [
-  { "id": "01a0...", "name": "Jane Doe", "email": "jane@example.com", "created_at": "2026-09-01T16:15:36.207Z" }
+  {
+    "id": "01a05dc1-2caa-7b21-acb1-b5b6cdec6baf",
+    "name": "Jane Doe",
+    "email": "jane@example.com",
+    "created_at": "2026-09-01T16:15:36.207329719Z"
+  }
 ]
 ```
+
+With no users you get `[]`, not `null`.
 
 ### Get a user
 
@@ -198,7 +236,20 @@ curl http://localhost:8080/api/v1/users/01a05dc1-2caa-7b21-acb1-b5b6cdec6baf \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-`404` if the id doesn't exist.
+```json
+{
+  "id": "01a05dc1-2caa-7b21-acb1-b5b6cdec6baf",
+  "name": "Jane Doe",
+  "email": "jane@example.com",
+  "created_at": "2026-09-01T16:15:36.207329719Z"
+}
+```
+
+`404` if the id doesn't exist:
+
+```json
+{ "error": "user not found" }
+```
 
 ### Update a user
 
@@ -209,8 +260,18 @@ curl -X PATCH http://localhost:8080/api/v1/users/01a05dc1-2caa-7b21-acb1-b5b6cde
   -d '{"name":"Jane Updated"}'
 ```
 
-Returns the updated user. `400` if neither `name` nor `email` is present, `404` if the
-user doesn't exist, `409` if the new email is already taken.
+```json
+{
+  "id": "01a05dc1-2caa-7b21-acb1-b5b6cdec6baf",
+  "name": "Jane Updated",
+  "email": "jane@example.com",
+  "created_at": "2026-09-01T16:15:36.207329719Z"
+}
+```
+
+You get the full updated user back, so no follow-up `GET`. `400` if you send neither `name`
+nor `email` (`{"error":"at least one of name or email is required"}`). `404` if the user
+doesn't exist. `409` if the new email is already taken.
 
 ### Delete a user
 
@@ -219,45 +280,46 @@ curl -X DELETE http://localhost:8080/api/v1/users/01a05dc1-2caa-7b21-acb1-b5b6cd
   -H "Authorization: Bearer $TOKEN"
 ```
 
-`204` on success, `404` if the user doesn't exist.
+`204` with an empty body on success. `404` with `{"error":"user not found"}` if the user
+doesn't exist.
 
 ## JWT Guide
 
-1. **Register** a user via `POST /api/v1/auth/register`.
-2. **Login** via `POST /api/v1/auth/login` with the same email/password. The response body
-   is `{"token": "..."}`.
-3. **Use the token** on every protected endpoint by sending it as a Bearer token:
+1. **Register** a user with `POST /api/v1/auth/register`.
+2. **Login** with `POST /api/v1/auth/login` using the same email and password. You get back
+   `{"token": "..."}`.
+3. **Send the token** on every protected endpoint as a Bearer token:
 
    ```
    Authorization: Bearer <token>
    ```
 
-4. Tokens are signed with HS256 using `JWT_SECRET` and expire after `JWT_TTL` (default 24h).
-   The claims are the standard registered claims: `sub` (user id), `iat`, `exp`.
-5. A missing, malformed, expired, or wrong-secret token gets a `401`:
+4. Tokens are signed with HS256 using `JWT_SECRET` and expire after `JWT_TTL`, 24h by
+   default. The claims are the standard registered ones: `sub` (user id), `iat`, `exp`.
+5. A missing, malformed, expired or wrong-secret token gets a `401`:
 
    ```json
    { "error": "invalid or expired token" }
    ```
 
-   A missing/malformed `Authorization` header gets a `401` with `"missing or malformed authorization header"`.
+   A missing or malformed `Authorization` header gets a `401` with
+   `"missing or malformed authorization header"`.
 
 ## gRPC
 
 Proto: `api/proto/user/v1/user.proto`, service `user.v1.UserService` with `CreateUser` and
-`GetUser` RPCs, mirroring the register/get-user HTTP endpoints and backed by the same
-application use cases. Listens on `GRPC_PORT` (default `9090`). No auth metadata is
-required on the gRPC path - the spec calls token metadata optional, and the HTTP path
-already demonstrates JWT-protected access.
+`GetUser`. They mirror the register and get-user HTTP endpoints and run the same use cases.
+It listens on `GRPC_PORT`, `9090` by default. I don't require auth metadata here: the spec
+calls token metadata optional, and the HTTP side already shows JWT protection.
 
 ### Calling it with grpcurl
 
-Server reflection is not registered, so point `grpcurl` at the `.proto` file. Install it
-with `go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest`, then, from this
-directory with the stack running:
+I don't register server reflection, so point `grpcurl` at the `.proto` file. Install it
+with `go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest`, then run from this
+directory with the stack up:
 
 ```bash
-# CreateUser - same rules and errors as POST /users
+# CreateUser - same rules and errors as POST /api/v1/auth/register
 grpcurl -plaintext -import-path . -proto api/proto/user/v1/user.proto \
   -d '{"name":"Jane Doe","email":"jane@example.com","password":"s3cret123"}' \
   localhost:9090 user.v1.UserService/CreateUser
@@ -265,23 +327,23 @@ grpcurl -plaintext -import-path . -proto api/proto/user/v1/user.proto \
 
 ```json
 {
-  "id": "68b8f0c1e4b0a1d2c3e4f5a6",
+  "id": "01a05dc1-2caa-7b21-acb1-b5b6cdec6baf",
   "name": "Jane Doe",
   "email": "jane@example.com",
-  "createdAt": "2026-09-04T09:15:22Z"
+  "createdAt": "2026-09-01T16:15:36.207329719Z"
 }
 ```
 
 ```bash
 # GetUser - by the id returned above
 grpcurl -plaintext -import-path . -proto api/proto/user/v1/user.proto \
-  -d '{"id":"68b8f0c1e4b0a1d2c3e4f5a6"}' \
+  -d '{"id":"01a05dc1-2caa-7b21-acb1-b5b6cdec6baf"}' \
   localhost:9090 user.v1.UserService/GetUser
 ```
 
-Errors map to gRPC status codes: `InvalidArgument` for validation failures (including a
-password over 72 bytes), `AlreadyExists` for a duplicate email, `NotFound` for an unknown
-id, `Internal` for anything unexpected.
+Errors map to gRPC codes: `InvalidArgument` for validation failures, a password over 72
+bytes included, `AlreadyExists` for a duplicate email, `NotFound` for an unknown id, and
+`Internal` for anything I didn't expect.
 
 ```
 ERROR:
@@ -289,11 +351,11 @@ ERROR:
   Message: email already exists
 ```
 
-`grpcurl describe user.v1.UserService` (with the same `-import-path`/`-proto` flags) prints
-the service definition without a running server.
+`grpcurl describe user.v1.UserService`, with the same `-import-path` and `-proto` flags,
+prints the service definition without a running server.
 
-Generated code lives in `internal/adapters/grpc/userv1` and is checked in; regenerate it
-after editing the `.proto` with:
+The generated code sits in `internal/adapters/grpc/userv1` and is checked in. Regenerate it
+after you edit the `.proto`:
 
 ```bash
 protoc -I . -I "$(brew --prefix protobuf)/include" \
@@ -304,81 +366,88 @@ protoc -I . -I "$(brew --prefix protobuf)/include" \
 
 ## Continuous Integration
 
-`.github/workflows/ci.yml` (at the repository root) runs on every branch push:
+`.github/workflows/ci.yml`, at the repository root, runs on every branch push:
 
 | Job | What it does |
 | --- | --- |
-| `build and unit tests` | `go mod tidy` diff check, `go build`, `go vet` with and without the `integration` tag, `go test -race`, coverage profile uploaded as an artifact |
+| `build and unit tests` | `go mod tidy` diff check, `go build`, `go vet` with and without the `integration` tag, `go test -race`, coverage profile uploaded as an artifact and to Codecov under the `unit` flag |
 | `golangci-lint` | `golangci-lint` v2.13.2 against `.golangci.yml`, config schema validated first |
-| `integration tests` | `go test -tags=integration -race`, using the runner's Docker daemon for the testcontainers `mongo:7` instance |
-| `docker image builds` | Builds the `Dockerfile` (no push) with a GitHub Actions layer cache |
+| `integration tests` | `go test -tags=integration -race`, using the runner's Docker daemon for the testcontainers `mongo:7` instance, coverage uploaded under the `integration` flag |
+| `docker image builds` | Builds the `Dockerfile`, no push, with a GitHub Actions layer cache |
 
 The Go version comes from `go.mod` via `go-version-file`, so there is one place to bump it.
 
 ## Design Decisions / Assumptions
 
-- **Hexagonal architecture** chosen over a simpler layered approach: satisfies the bonus
-  requirement and keeps business logic (`domain`/`application`) independent of MongoDB,
-  echo, grpc, and the JWT library - testable without any of them.
-- **echo** as HTTP framework.
-- **Domain repository port is `context.Context`-first** on every method, so cancellation/
-  timeouts propagate from HTTP request down to MongoDB calls, and graceful shutdown can
-  cut off in-flight work cleanly.
-- **Sentinel domain errors** (`ErrUserNotFound`, `ErrEmailAlreadyExists`, `ErrInvalidCredentials`,
-  `ErrInvalidToken`) instead of string matching, so adapters/HTTP/gRPC layers can map errors
-  to status codes via `errors.Is`.
-- **Password length is capped at 72 bytes** (`domain.MaxPasswordLength`). bcrypt hashes at
-  most 72 bytes and returns an error beyond that, so an overlong password would otherwise
-  surface as a `500`. The limit is stated in `domain` because it is a rule callers must
-  respect to use the `PasswordHasher` port; the bcrypt adapter maps the library's
-  `ErrPasswordTooLong` onto `domain.ErrPasswordTooLong`, and both the HTTP (`400`) and gRPC
-  (`InvalidArgument`) adapters map that sentinel to a client error. Silently truncating to
-  72 bytes was rejected: it would make two different passwords authenticate the same
-  account.
-- **bcrypt cost**: `bcrypt.DefaultCost` (10). No tuning knob was added since the challenge
-  doesn't call for one and a fixed, well-known default is easy to reason about.
-- **Login is timing-equalized.** Returning early when no user matched would answer an
-  unknown email in microseconds while a known email with a wrong password costs a full
-  bcrypt comparison (~60ms here) - a reliable oracle for which addresses are registered.
-  `AuthenticateUser` therefore calls `PasswordHasher.CompareDummy` on the not-found branch,
-  verifying against a placeholder hash and discarding the result, so both failures cost the
-  same and return the same `401 invalid credentials`. Measured after the change: 62.79ms for
-  a known email, 62.83ms for an unknown one.
-- **Registration still reveals whether an email is taken** (`409`), which is a weaker form
-  of the same enumeration. It is kept because the alternative - accepting the registration
-  and reporting success either way - needs an email-confirmation flow that is out of scope
-  here. Noted rather than hidden.
-- **Authentication, but no per-user authorization.** Any valid token may read, update, or
-  delete any user - the challenge defines no roles, ownership, or admin concept, and adding
-  one would be inventing requirements. The token's subject is available to handlers
-  (`authMiddleware` puts it on the context), so an ownership check is a single comparison
-  away when the product defines who may act on whom. Stated explicitly because a reviewer
-  should see it as a decision rather than an oversight.
-- **JWT claims**: only the standard registered claims (`sub`, `iat`, `exp`) are used. `sub`
-  is the user's ID; no roles/scopes exist in the domain model, so there was nothing else to
+- **"Create a user" is `POST /api/v1/auth/register`**, not a second protected
+  `POST /api/v1/users`. The spec lists user creation twice, once as registration and once
+  as a user operation, and one handler covers both. If create were protected, only an
+  existing user could make the first account, and the challenge gives me no admin role to
+  solve that. gRPC `CreateUser` is the same use case on the other transport.
+- **Hexagonal architecture** instead of a plain layered one. It covers the bonus, and it
+  keeps `domain` and `application` free of MongoDB, echo, grpc and the JWT library. I can
+  test them without any of those.
+- **echo** for HTTP.
+- **The repository port takes `context.Context` first** on every method. Cancellation and
+  timeouts travel from the HTTP request down to MongoDB, and graceful shutdown can cut off
+  in-flight work.
+- **Sentinel domain errors** (`ErrUserNotFound`, `ErrEmailAlreadyExists`,
+  `ErrInvalidCredentials`, `ErrInvalidToken`) instead of matching strings, so the HTTP and
+  gRPC layers map errors to status codes with `errors.Is`.
+- **Passwords are capped at 72 bytes** (`domain.MaxPasswordLength`). bcrypt hashes at most
+  72 bytes and errors past that, so a longer password would come back as a `500`. The cap
+  lives in `domain` because it is a rule callers must respect to use the `PasswordHasher`
+  port. The bcrypt adapter maps the library's `ErrPasswordTooLong` onto
+  `domain.ErrPasswordTooLong`, and HTTP (`400`) and gRPC (`InvalidArgument`) turn that into
+  a client error. I rejected silent truncation to 72 bytes: two different passwords would
+  then open the same account.
+- **bcrypt cost** is `bcrypt.DefaultCost` (10). The challenge doesn't ask for tuning and a
+  fixed, well known default is easy to reason about.
+- **Login costs the same either way.** Returning early when no user matches answers an
+  unknown email in microseconds, while a known email with a wrong password pays a full
+  bcrypt compare, about 60ms here. That is a reliable oracle for which addresses are
+  registered. So `AuthenticateUser` calls `PasswordHasher.CompareDummy` on the not-found
+  branch, verifies against a placeholder hash and throws the result away. Both failures
+  cost the same and return the same `401 invalid credentials`. Measured after the change:
+  62.79ms for a known email, 62.83ms for an unknown one.
+- **Registration still reveals whether an email is taken** with `409`. That is a weaker
+  version of the same enumeration. I kept it, because the alternative is accepting the
+  registration and reporting success either way, and that needs an email confirmation flow
+  which is out of scope here. I would rather write it down than hide it.
+- **Authentication, but no per-user authorization.** Any valid token can read, update or
+  delete any user. The challenge defines no roles, no ownership and no admin, and adding
+  one would be inventing requirements. The token subject is on the context, put there by
+  `authMiddleware`, so an ownership check is one comparison away once the product says who
+  may act on whom. I state it here so a reviewer reads it as a decision, not as a miss.
+- **JWT claims** are only the standard registered ones: `sub`, `iat`, `exp`. `sub` is the
+  user id. There are no roles or scopes in the domain model, so there was nothing else to
   put in the token.
-- **PATCH semantics**: `UpdateUser` returns the full updated user rather than a bare
-  200/204, so a client doesn't need a follow-up `GET`. The repository port returns the
-  updated user from the write itself (`FindOneAndUpdate` with `ReturnDocument(After)`)
-  instead of the handler reading the row back: one round trip, and a concurrent update
-  cannot land in between and make the response show state this request never wrote.
-- **Validation lives in `domain`, applied by the use cases** (`domain.ValidateName`,
+- **PATCH returns the full updated user** instead of a bare 200 or 204, so the client
+  doesn't need a follow-up `GET`. The write itself returns it, `FindOneAndUpdate` with
+  `ReturnDocument(After)`, rather than the handler reading the row back. That is one round
+  trip, and no concurrent update can land in between and make the response show state this
+  request never wrote.
+- **Validation lives in `domain` and the use cases apply it** (`domain.ValidateName`,
   `ValidateEmail`, `ValidatePassword`, `UserUpdateParam.Validate`), not in each adapter.
-  What counts as a valid user is a business rule, and duplicating it per adapter lets them
-  drift: an account created over gRPC under looser rules would be unusable over HTTP.
-  Adapters only map the resulting `*domain.ValidationError` to their transport - HTTP `400`,
-  gRPC `InvalidArgument`. The HTTP adapter keeps its own small validator for what only it
-  can see (a malformed JSON body) and for login, which has no gRPC counterpart.
-- **Validation is hand-rolled** (`net/mail` for email shape, length checks) rather than
-  pulling in a validation library - the field set is small enough that a dependency would
-  add more surface area than it saves.
-- **Logging** uses `log/slog` with a custom middleware (method, path, status, duration)
-  rather than echo's built-in logger, so the fields match the challenge's requirement
-  exactly and output is structured JSON.
-- **Concurrency task** is a standalone, independently-testable `UserCountReporter` type
-  (constructed with the repo, interval, and logger) rather than an inline ticker loop in
-  `main.go`, so its start/stop behavior can be unit tested without a real server.
-- **gRPC** shares the same `RegisterUser`/`GetUser` use cases as HTTP - no business logic is
-  duplicated between the two adapters.
-- Bonuses implemented: Docker/docker-compose, input validation, graceful shutdown, gRPC
+  What counts as a valid user is a business rule. Duplicate it per adapter and they drift:
+  an account created over gRPC under looser rules would be unusable over HTTP. The adapters
+  only map `*domain.ValidationError` to their transport, HTTP `400` and gRPC
+  `InvalidArgument`. The HTTP adapter keeps a small validator of its own for what only it
+  can see, a malformed JSON body, and for login, which has no gRPC counterpart.
+- **Validation is hand-rolled**, `net/mail` for the email shape plus length checks, instead
+  of a validation library. The field set is small enough that a dependency would add more
+  surface than it saves. One tradeoff to know about: `mail.ParseAddress` accepts the RFC
+  5322 display name form, so `"Jane Doe <jane@example.com>"` passes. That is correct by the
+  RFC and harmless here, since I store and compare the value as given and the unique index
+  covers the whole string. A system that emails users would normalize to the bare address
+  first.
+- **Logging** uses `log/slog` with my own middleware (method, path, status, duration)
+  instead of echo's built-in logger, so the fields match what the challenge asks for and
+  the output is structured JSON.
+- **The concurrency task** is a `UserCountReporter` type, built from the repo, an interval
+  and a logger, instead of an inline ticker loop in `main.go`. I can unit test its start
+  and stop behavior without a real server.
+- **gRPC** runs the same `RegisterUser` and `GetUser` use cases as HTTP, so no business
+  logic is duplicated between the two adapters.
+- Bonuses done: Docker and docker-compose, input validation, graceful shutdown, gRPC
   (`CreateUser`/`GetUser`).

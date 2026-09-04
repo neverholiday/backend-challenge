@@ -1,0 +1,40 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - revive
+    - gosec
+    - bodyclose
+    - noctx
+    - contextcheck
+    - unconvert
+    - unparam
+    - misspell
+  settings:
+    revive:
+      rules:
+        - name: exported
+        - name: context-as-argument
+        - name: error-naming
+        - name: indent-error-flow
+    gosec:
+      excludes:
+        - G404 # math/rand acceptable outside crypto contexts
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/neverholiday/backend-challenge

@@ -1,0 +1,35 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    # No host port published: the API reaches Mongo over the compose network, and
+    # mongo:7 runs without auth. Add `127.0.0.1:27017:27017` if you need local
+    # mongosh/Compass access.
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DATABASE: user_management
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      JWT_TTL: 24h
+      HTTP_PORT: "8080"
+      GRPC_PORT: "9090"
+      USER_COUNT_LOG_INTERVAL: 10s
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mongo_data:

@@ -247,6 +247,48 @@ application use cases. Listens on `GRPC_PORT` (default `9090`). No auth metadata
 required on the gRPC path - the spec calls token metadata optional, and the HTTP path
 already demonstrates JWT-protected access.
 
+### Calling it with grpcurl
+
+Server reflection is not registered, so point `grpcurl` at the `.proto` file. Install it
+with `go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest`, then, from this
+directory with the stack running:
+
+```bash
+# CreateUser - same rules and errors as POST /users
+grpcurl -plaintext -import-path . -proto api/proto/user/v1/user.proto \
+  -d '{"name":"Jane Doe","email":"jane@example.com","password":"s3cret123"}' \
+  localhost:9090 user.v1.UserService/CreateUser
+```
+
+```json
+{
+  "id": "68b8f0c1e4b0a1d2c3e4f5a6",
+  "name": "Jane Doe",
+  "email": "jane@example.com",
+  "createdAt": "2026-09-04T09:15:22Z"
+}
+```
+
+```bash
+# GetUser - by the id returned above
+grpcurl -plaintext -import-path . -proto api/proto/user/v1/user.proto \
+  -d '{"id":"68b8f0c1e4b0a1d2c3e4f5a6"}' \
+  localhost:9090 user.v1.UserService/GetUser
+```
+
+Errors map to gRPC status codes: `InvalidArgument` for validation failures (including a
+password over 72 bytes), `AlreadyExists` for a duplicate email, `NotFound` for an unknown
+id, `Internal` for anything unexpected.
+
+```
+ERROR:
+  Code: AlreadyExists
+  Message: email already exists
+```
+
+`grpcurl describe user.v1.UserService` (with the same `-import-path`/`-proto` flags) prints
+the service definition without a running server.
+
 Generated code lives in `internal/adapters/grpc/userv1` and is checked in; regenerate it
 after editing the `.proto` with:
 

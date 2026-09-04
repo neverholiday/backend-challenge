@@ -1,5 +1,7 @@
 # User Management API
 
+[![CI](https://github.com/neverholiday/backend-challenge/actions/workflows/ci.yml/badge.svg?branch=feat/user_management_api_v2)](https://github.com/neverholiday/backend-challenge/actions/workflows/ci.yml?query=branch%3Afeat%2Fuser_management_api_v2)
+
 RESTful user management API in Go, backed by MongoDB, with JWT (HS256) authentication.
 Built with hexagonal architecture (ports & adapters). Also exposes a gRPC service for
 `CreateUser`/`GetUser`.

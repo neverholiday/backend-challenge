@@ -99,7 +99,8 @@ docker compose up --build
 ```
 
 Starts MongoDB and the API together. The API listens on `:8080` (HTTP) and `:9090` (gRPC).
-Override the JWT secret with an env var if you want something other than the dev default:
+Mongo publishes no host port - it is reachable only from the API over the compose network,
+since `mongo:7` runs without authentication. Override the JWT secret with an env var if you want something other than the dev default:
 
 ```bash
 JWT_SECRET=some-real-secret docker compose up --build

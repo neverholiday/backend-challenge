@@ -2,8 +2,9 @@ services:
   mongo:
     image: mongo:7
     restart: unless-stopped
-    ports:
-      - "27017:27017"
+    # No host port published: the API reaches Mongo over the compose network, and
+    # mongo:7 runs without auth. Add `127.0.0.1:27017:27017` if you need local
+    # mongosh/Compass access.
     volumes:
       - mongo_data:/data/db
     healthcheck:

@@ -300,6 +300,19 @@ protoc -I . -I "$(brew --prefix protobuf)/include" \
   api/proto/user/v1/user.proto
 ```
 
+## Continuous Integration
+
+`.github/workflows/ci.yml` (at the repository root) runs on every branch push:
+
+| Job | What it does |
+| --- | --- |
+| `build and unit tests` | `go mod tidy` diff check, `go build`, `go vet` with and without the `integration` tag, `go test -race`, coverage profile uploaded as an artifact |
+| `golangci-lint` | `golangci-lint` v2.13.2 against `.golangci.yml`, config schema validated first |
+| `integration tests` | `go test -tags=integration -race`, using the runner's Docker daemon for the testcontainers `mongo:7` instance |
+| `docker image builds` | Builds the `Dockerfile` (no push) with a GitHub Actions layer cache |
+
+The Go version comes from `go.mod` via `go-version-file`, so there is one place to bump it.
+
 ## Design Decisions / Assumptions
 
 - **Hexagonal architecture** chosen over a simpler layered approach: satisfies the bonus

@@ -14,6 +14,31 @@ question: of the numbers that match, which ones still have a ticket available?
 That removes the need for a wildcard index over 10 million records, which is the hardest
 part of this problem otherwise.
 
+### 1.1 Moving parts
+
+The system is a handful of pieces. I list them here so the sections below have somewhere to
+hang.
+
+| Piece | Count | Job |
+|---|---|---|
+| API service | N instances behind a load balancer | Runs searches, holds tickets, sells them |
+| Redis | One primary, one replica | Availability sets, expiry index, bitmap (4.2) |
+| MongoDB | One replica set | Tickets, reservations, orders (4.3) |
+| Expiry worker | One, every second | Returns expired holds to the pool (5.3) |
+| Reservation reconciler | One, every minute | Fixes holds Redis released but MongoDB still calls active (5.4) |
+| Orphan reconciler | One, continuous slow pass | Finds tickets that belong to nobody (5.4) |
+| Bitmap refresh | Inside each API instance, every 5 seconds | Pulls the 125 KB availability bitmap (4.2) |
+
+The API service keeps no per-user state. A search's position lives in the cursor it hands
+back, and the bitmap is a cache any instance can refill with one `GET`. So any instance can
+serve any request, and I scale by adding instances. The state that matters is in Redis and
+MongoDB.
+
+The three workers run as their own processes, not inside the API. I don't want a sweep
+falling behind because request traffic is busy, and I want to restart them without
+restarting the API. One instance of each is enough. Running two during a deploy is also
+safe, because every restore they do is idempotent (5.5).
+
 ---
 
 ## 2. Assumptions
@@ -617,6 +642,12 @@ design.
 ---
 
 ## 9. API contract
+
+Every endpoint sits behind the JWT middleware from Part 1. The caller's `user_id` comes from
+the token claim, never from the request body. That is what makes the one-page cap real.
+Rules 2.5 and 2.6 are per user, so a caller who could name any `user_id` could release
+someone else's holds, or hold twenty pages under twenty invented identities. An
+unauthenticated request gets `401`.
 
 Under reserve-on-search, **a search changes state**. So it is a `POST`, it is not cacheable
 and it is not safe to retry blindly. That falls straight out of the requirement.
